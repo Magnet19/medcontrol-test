@@ -1,0 +1,493 @@
+{
+  "version": 1,
+  "project": "report-platform",
+  "source": "ARCHITECTURE.md",
+  "tasks": [
+    {
+      "id": "T01",
+      "title": "Monorepo scaffolding",
+      "model": "sonnet",
+      "description": "Каркас монорепо: npm workspaces, docker-compose со stub-сервисами (postgres, redis, backend, worker, frontend), Makefile, .env.example, базовый tsconfig. Создаются пустые пакеты packages/{shared,backend,worker,frontend} с package.json и tsconfig.json.",
+      "files": [
+        "package.json",
+        "docker-compose.yml",
+        "Makefile",
+        ".env.example",
+        "tsconfig.base.json",
+        "packages/shared/package.json",
+        "packages/shared/tsconfig.json",
+        "packages/backend/package.json",
+        "packages/backend/tsconfig.json",
+        "packages/worker/package.json",
+        "packages/worker/tsconfig.json",
+        "packages/frontend/package.json",
+        "packages/frontend/tsconfig.json"
+      ],
+      "substeps": [
+        "Корневой package.json с workspaces: ['packages/*']",
+        "tsconfig.base.json + references из каждого пакета",
+        "docker-compose.yml: postgres:15 и redis:7 с healthcheck, named volumes pgdata и reports-data",
+        "Makefile: up/down/logs/check делегируют в compose и make -C packages/*",
+        ".env.example с DATABASE_URL, REDIS_URL, OUTPUT_DIR"
+      ],
+      "tdd": {
+        "level": "smoke",
+        "before": [
+          "docker compose config — ошибки валидации (файла нет)",
+          "npm install падает — нет package.json"
+        ],
+        "after": [
+          "docker compose config проходит без ошибок",
+          "docker compose up -d postgres redis; pg_isready отвечает, redis-cli ping → PONG",
+          "npm install проходит, workspaces линкуются"
+        ]
+      },
+      "depends_on": []
+    },
+    {
+      "id": "T02",
+      "title": "Shared: types + Prisma schema",
+      "model": "sonnet",
+      "description": "Общий пакет @shared: TypeScript-типы ReportDefinition, ParameterField, GenerateContext, TaskStatus и Prisma-схема модели Task (UUID, reportId, status, parameters JSONB, resultUrl, error, createdAt, completedAt).",
+      "files": [
+        "packages/shared/src/types.ts",
+        "packages/shared/src/index.ts",
+        "packages/shared/prisma/schema.prisma"
+      ],
+      "substeps": [
+        "Типы из ARCHITECTURE.md §2.1 (ReportDefinition, ParameterField, GenerateContext)",
+        "TaskStatus = 'pending' | 'processing' | 'completed' | 'failed'",
+        "Prisma-модель Task по §1.5",
+        "Скрипт prisma generate, экспорт PrismaClient из index.ts"
+      ],
+      "tdd": {
+        "level": "unit",
+        "before": [
+          "tsd-тест: expectType<TaskStatus>('pending') — не компилируется (типа нет)"
+        ],
+        "after": [
+          "tsd-тест: все четыре литерала присваиваются TaskStatus, пятый отвергается",
+          "Prisma Client сгенерирован, Task.findMany типизирован"
+        ]
+      },
+      "depends_on": ["T01"]
+    },
+    {
+      "id": "T03",
+      "title": "DB migration: Task table",
+      "model": "sonnet",
+      "description": "Первичная миграция Prisma: создаёт таблицу Task с индексами по status и createdAt для эффективных выборок и пагинации.",
+      "files": [
+        "packages/shared/prisma/migrations/0001_init/migration.sql",
+        "packages/shared/prisma/migrations/migration_lock.toml"
+      ],
+      "substeps": [
+        "prisma migrate dev --name init против запущенной postgres",
+        "Ревью SGS: CREATE TABLE + CREATE INDEX",
+        "Фикс порядка колонок и дефолтов"
+      ],
+      "tdd": {
+        "level": "integration",
+        "before": [
+          "SELECT * FROM \"Task\" → relation does not exist"
+        ],
+        "after": [
+          "prisma migrate deploy применяет миграцию",
+          "INSERT + SELECT Task работают, DEFAULT status = 'pending'",
+          "Индексы Task_status_idx и Task_createdAt_idx присутствуют в \\di"
+        ]
+      },
+      "depends_on": ["T02"]
+    },
+    {
+      "id": "T04",
+      "title": "Backend: Express skeleton",
+      "model": "sonnet",
+      "description": "Точка входа API-сервера: Express app-factory, health endpoint, подключение Prisma, централизованный error handler, graceful shutdown по SIGTERM.",
+      "files": [
+        "packages/backend/src/index.ts",
+        "packages/backend/src/app.ts",
+        "packages/backend/src/db.ts",
+        "packages/backend/src/env.ts"
+      ],
+      "substeps": [
+        "env.ts — загрузка и валидация DATABASE_URL/REDIS_URL/PORT (zod)",
+        "db.ts — singleton PrismaClient",
+        "app.ts — createApp(): express.json, GET /health, errorHandler",
+        "index.ts — listen + shutdown hooks (SIGTERM → prisma.$disconnect)"
+      ],
+      "tdd": {
+        "level": "integration",
+        "before": [
+          "supertest: GET /health → ECONNREFUSED / 404"
+        ],
+        "after": [
+          "supertest: GET /health → 200 { status: 'ok' }",
+          "невалидный env → процесс падает с понятной ошибкой"
+        ]
+      },
+      "depends_on": ["T01"]
+    },
+    {
+      "id": "T05",
+      "title": "Backend: queue service (BullMQ producer)",
+      "model": "opus",
+      "description": "Producer-сторона очереди reports: подключение к Redis, singleton Queue, функция enqueueReport(taskId, reportId, parameters, format). Типобезопасный Job payload вынесен в @shared для общего использования с Worker.",
+      "files": [
+        "packages/backend/src/services/queue.ts",
+        "packages/shared/src/queue.ts"
+      ],
+      "substeps": [
+        "Shared тип ReportJob { taskId, reportId, parameters, format }",
+        "Queue('reports', { connection: fromEnv }) + graceful close",
+        "enqueueReport — обёртка над queue.add с jobId = taskId (идемпотентность)",
+        "Интеграция в app.ts: закрывать очередь в shutdown"
+      ],
+      "tdd": {
+        "level": "integration",
+        "before": [
+          "После enqueueReport queue.getWaitingCount() → 0 (функции нет)"
+        ],
+        "after": [
+          "enqueueReport кладёт job → getWaitingCount()===1, data совпадает по схеме ReportJob",
+          "Повторный enqueueReport с тем же taskId не создаёт дубликат",
+          "При недоступном Redis enqueueReport реджектится (не висит)"
+        ]
+      },
+      "depends_on": ["T04"]
+    },
+    {
+      "id": "T06",
+      "title": "Backend: GET /api/reports",
+      "model": "sonnet",
+      "description": "Эндпоинт списка доступных отчётов. Использует shared registry-meta (метадата отчётов без generate), импортируемый и backend-ом, и worker-ом — единый источник правды о каталоге.",
+      "files": [
+        "packages/backend/src/routes/reports.ts",
+        "packages/shared/src/registry-meta.ts"
+      ],
+      "substeps": [
+        "registry-meta.ts — тип ReportMeta = Omit<ReportDefinition, 'generate'>",
+        "Экспорт массива REPORTS_META (пока пусто, наполняется в T12/T13)",
+        "GET /api/reports возвращает REPORTS_META как JSON",
+        "Монтирование router в app.ts"
+      ],
+      "tdd": {
+        "level": "integration",
+        "before": [
+          "supertest: GET /api/reports → 404"
+        ],
+        "after": [
+          "GET /api/reports → 200, массив, форма элементов соответствует ReportMeta",
+          "Поле generate отсутствует в ответе"
+        ]
+      },
+      "depends_on": ["T02", "T04"]
+    },
+    {
+      "id": "T07",
+      "title": "Backend: POST /api/reports/:id/run",
+      "model": "opus",
+      "description": "Запуск генерации отчёта: валидация parameters по parametersSchema, создание Task в БД со status=pending, постановка Job в очередь. Обеспечивает согласованность: если enqueue падает — Task помечается failed, клиенту возвращается 500.",
+      "files": [
+        "packages/backend/src/routes/reports.ts",
+        "packages/backend/src/services/validator.ts"
+      ],
+      "substeps": [
+        "validator.ts — validateParameters(schema, input): типы/required/default",
+        "Резолв report по id из REPORTS_META, 404 если не найден",
+        "prisma.task.create({ status: 'pending', reportId, parameters, ... })",
+        "try enqueueReport; catch → prisma.task.update status=failed, throw 500",
+        "Ответ 201 { taskId, status }"
+      ],
+      "tdd": {
+        "level": "integration",
+        "before": [
+          "POST /api/reports/unknown/run → 404 (endpoint-а нет)"
+        ],
+        "after": [
+          "Валидный запрос → 201, Task в БД (status=pending), Job в Redis",
+          "Невалидные параметры → 400 + сообщение о поле",
+          "Неизвестный reportId → 404",
+          "При изолированной Redis-недоступности → 500, Task=failed"
+        ]
+      },
+      "depends_on": ["T05", "T06"]
+    },
+    {
+      "id": "T08",
+      "title": "Backend: GET /api/tasks и /api/tasks/:id",
+      "model": "sonnet",
+      "description": "Список запусков с пагинацией (limit, offset, order by createdAt desc) и получение одной задачи по id.",
+      "files": [
+        "packages/backend/src/routes/tasks.ts"
+      ],
+      "substeps": [
+        "GET /api/tasks — query limit/offset (zod, defaults 50/0)",
+        "prisma.task.findMany + count для пагинации",
+        "GET /api/tasks/:id — findUnique, 404 если нет",
+        "Монтирование в app.ts"
+      ],
+      "tdd": {
+        "level": "integration",
+        "before": [
+          "supertest: GET /api/tasks → 404"
+        ],
+        "after": [
+          "GET /api/tasks — пагинация отдаёт { items, total, limit, offset }",
+          "GET /api/tasks/:id — существующий → 200 с полями Task; несуществующий → 404",
+          "limit=3 вернёт максимум 3 записи"
+        ]
+      },
+      "depends_on": ["T04"]
+    },
+    {
+      "id": "T09",
+      "title": "Backend: GET /api/tasks/:id/download",
+      "model": "sonnet",
+      "description": "Скачивание сгенерированного файла с правильными заголовками Content-Type (xlsx/pdf) и Content-Disposition. Проверяет статус задачи и наличие файла на диске.",
+      "files": [
+        "packages/backend/src/routes/tasks.ts"
+      ],
+      "substeps": [
+        "findUnique; 404 если Task нет",
+        "409 если status !== 'completed'",
+        "404 если fs.access(resultUrl) падает",
+        "Определить MIME по расширению (xlsx/pdf)",
+        "fs.createReadStream.pipe(res) с Content-Disposition: attachment"
+      ],
+      "tdd": {
+        "level": "integration",
+        "before": [
+          "GET /api/tasks/:id/download → 404"
+        ],
+        "after": [
+          "completed с существующим файлом → 200 + правильный Content-Type + байты файла",
+          "pending → 409",
+          "completed, но файл удалён → 404",
+          "Несуществующий id → 404"
+        ]
+      },
+      "depends_on": ["T08"]
+    },
+    {
+      "id": "T10",
+      "title": "Worker: auto-discovery registry",
+      "model": "opus",
+      "description": "Автоматическая регистрация всех отчётов из packages/worker/src/reports/*.{ts,js}. Dynamic import, валидация формы через zod, защита от дубликатов id. Работает и в dev (ts-node), и в prod (скомпилированный js).",
+      "files": [
+        "packages/worker/src/registry.ts"
+      ],
+      "substeps": [
+        "zod-схема ReportDefinitionSchema (id, name, description, formats, parametersSchema, generate)",
+        "readdir reportsDir, фильтр по .ts/.js (исключая .d.ts и .test.*)",
+        "Для каждого файла await import(path) → default",
+        "Парсинг через zod; throw при невалидной форме",
+        "Проверка уникальности id перед registry.set",
+        "Экспорт getReport(id), getAllReports(), getReportsMeta()"
+      ],
+      "tdd": {
+        "level": "unit",
+        "before": [
+          "getAllReports() → [] (функции нет)"
+        ],
+        "after": [
+          "С двумя мок-файлами в test-reports оба отчёта в registry",
+          "Дублирующийся id → throws 'duplicate report id'",
+          "Файл без default export или с неполным объектом → throws с указанием файла",
+          "getReportsMeta() не содержит поле generate"
+        ]
+      },
+      "depends_on": ["T02"]
+    },
+    {
+      "id": "T11",
+      "title": "Worker: BullMQ consumer + task lifecycle",
+      "model": "opus",
+      "description": "Подписка на очередь reports и полный жизненный цикл задачи: pending → processing (UPDATE в БД) → generate() → completed (+ resultUrl) / failed (+ error). Concurrency, graceful shutdown, обработка exceptions без падения процесса.",
+      "files": [
+        "packages/worker/src/index.ts",
+        "packages/worker/src/processor.ts",
+        "packages/worker/src/db.ts"
+      ],
+      "substeps": [
+        "db.ts — PrismaClient singleton для worker",
+        "processor.ts — функция processJob(job): UPDATE processing → getReport → generate → UPDATE completed/failed",
+        "index.ts — new Worker('reports', processor, { concurrency, connection })",
+        "Логирование событий completed/failed",
+        "SIGTERM → worker.close() + prisma.$disconnect",
+        "Необработанные ошибки generate не крашат процесс"
+      ],
+      "tdd": {
+        "level": "integration",
+        "before": [
+          "После enqueue Task навсегда остаётся pending (consumer-а нет)"
+        ],
+        "after": [
+          "Успешный мок-отчёт: Task проходит pending→processing→completed, resultUrl заполнен, файл на диске",
+          "Падающий generate: Task → failed, error содержит текст исключения, процесс жив",
+          "Два параллельных job обрабатываются (concurrency>1)",
+          "SIGTERM: текущий job завершается, новые не берутся"
+        ]
+      },
+      "depends_on": ["T10", "T05"]
+    },
+    {
+      "id": "T12",
+      "title": "Worker: report user-export (XLSX)",
+      "model": "sonnet",
+      "description": "Первый демо-отчёт — выгрузка пользователей в XLSX через ExcelJS. Реализация по шаблону ARCHITECTURE.md §2.2: моковые данные, параметры dateFrom/dateTo.",
+      "files": [
+        "packages/worker/src/reports/user-export.ts"
+      ],
+      "substeps": [
+        "ReportDefinition: id='user-export', formats=['xlsx']",
+        "parametersSchema: dateFrom/dateTo (date, required)",
+        "generate: моковые строки пользователей → ExcelJS workbook с колонками id/email/createdAt",
+        "Запись в path.join(ctx.outputDir, `${ctx.taskId}.xlsx`)",
+        "Добавление meta в REPORTS_META из shared"
+      ],
+      "tdd": {
+        "level": "unit",
+        "before": [
+          "getReport('user-export') → undefined"
+        ],
+        "after": [
+          "generate создаёт xlsx, ExcelJS читает его обратно",
+          "В первой строке присутствуют заголовки id/email/createdAt",
+          "Число строк данных > 0",
+          "Отчёт появляется в REPORTS_META с корректной схемой"
+        ]
+      },
+      "depends_on": ["T10"]
+    },
+    {
+      "id": "T13",
+      "title": "Worker: report sales-summary (PDF)",
+      "model": "sonnet",
+      "description": "Второй демо-отчёт в формате PDF (pdfkit) — покрывает второй поддерживаемый формат. Параметр period (enum: day/week/month), моковые агрегаты.",
+      "files": [
+        "packages/worker/src/reports/sales-summary.ts"
+      ],
+      "substeps": [
+        "ReportDefinition: id='sales-summary', formats=['pdf']",
+        "parametersSchema: period (string, required, default='week')",
+        "generate: PDFDocument с заголовком и таблицей агрегатов",
+        "Запись в ctx.outputDir/{taskId}.pdf"
+      ],
+      "tdd": {
+        "level": "unit",
+        "before": [
+          "getReport('sales-summary') → undefined"
+        ],
+        "after": [
+          "generate создаёт файл размером > 0",
+          "Первые 5 байт файла === '%PDF-' (валидная сигнатура)",
+          "Отчёт появляется в REPORTS_META"
+        ]
+      },
+      "depends_on": ["T10"]
+    },
+    {
+      "id": "T14",
+      "title": "Frontend: API client + reports catalog",
+      "model": "sonnet",
+      "description": "Vite + React + shadcn/ui + Tailwind. Обёртка fetch, страница каталога отчётов с карточками (Card/Button shadcn) и переходом на экран запуска.",
+      "files": [
+        "packages/frontend/src/lib/api.ts",
+        "packages/frontend/src/pages/ReportsCatalog.tsx",
+        "packages/frontend/src/App.tsx",
+        "packages/frontend/src/main.tsx",
+        "packages/frontend/index.html",
+        "packages/frontend/vite.config.ts",
+        "packages/frontend/tailwind.config.ts",
+        "packages/frontend/postcss.config.js"
+      ],
+      "substeps": [
+        "Vite-скелет + Tailwind + shadcn (button, card)",
+        "lib/api.ts: listReports, runReport, getTask, taskDownloadUrl",
+        "Типы из @shared (ReportMeta, Task)",
+        "React Router: '/' — каталог, '/reports/:id' — форма, '/tasks/:id' — мониторинг",
+        "ReportsCatalog: useQuery(listReports) → грид Card"
+      ],
+      "tdd": {
+        "level": "unit",
+        "before": [
+          "RTL: <ReportsCatalog/> выбрасывает (компонента нет)"
+        ],
+        "after": [
+          "MSW мокает GET /api/reports двумя отчётами → рендерятся 2 Card с именами",
+          "Клик на Запустить навигирует на /reports/:id",
+          "Пустой список → fallback 'Нет отчётов'"
+        ]
+      },
+      "depends_on": ["T06"]
+    },
+    {
+      "id": "T15",
+      "title": "Frontend: dynamic form + task monitor (polling)",
+      "model": "opus",
+      "description": "Динамическая форма параметров по parametersSchema (shadcn Input/DatePicker по типам) + страница мониторинга задачи с polling каждые 3 секунды и активацией кнопки Скачать при status=completed.",
+      "files": [
+        "packages/frontend/src/components/ParametersForm.tsx",
+        "packages/frontend/src/pages/TaskView.tsx",
+        "packages/frontend/src/pages/RunReport.tsx",
+        "packages/frontend/src/hooks/useTaskPolling.ts"
+      ],
+      "substeps": [
+        "schema→field mapping: string→Input, number→Input[type=number], date→DatePicker",
+        "react-hook-form + zodResolver (zod-схема из parametersSchema)",
+        "submit → runReport → navigate('/tasks/'+taskId)",
+        "useTaskPolling(taskId): setInterval(3000) → getTask; cleanup; stop on completed|failed",
+        "TaskView: статус-бейдж, прогресс, кнопка 'Скачать' (disabled пока не completed), текст ошибки при failed"
+      ],
+      "tdd": {
+        "level": "unit+integration",
+        "before": [
+          "RTL: <ParametersForm/> не рендерится (компонента нет)"
+        ],
+        "after": [
+          "RTL: schema с тремя типами (string/number/date) → рендер трёх полей соответствующих элементов",
+          "Required-поля блокируют submit через zod",
+          "MSW-integration: submit → POST /run → navigate → polling видит pending→processing→completed, кнопка Скачать становится активной",
+          "useTaskPolling очищает setInterval на unmount"
+        ]
+      },
+      "depends_on": ["T14", "T07", "T08"]
+    },
+    {
+      "id": "T16",
+      "title": "E2E: полный цикл через docker-compose",
+      "model": "opus",
+      "description": "Playwright-сценарий конца в конец: поднимаем весь стек через docker compose, открываем фронт, запускаем user-export, дожидаемся completed, скачиваем файл и проверяем сигнатуру XLSX. Smoke-тест всей архитектуры.",
+      "files": [
+        "e2e/platform.spec.ts",
+        "e2e/global-setup.ts",
+        "playwright.config.ts",
+        "Makefile"
+      ],
+      "substeps": [
+        "playwright.config.ts с globalSetup/Teardown",
+        "global-setup: docker compose up -d, wait-on http://localhost:3000/health + frontend",
+        "Сценарий: открыть '/' → кликнуть user-export → заполнить даты → Submit → ждать 'Скачать' (timeout 60s) → download → проверить первые 4 байта PK\\x03\\x04",
+        "global-teardown: docker compose down -v",
+        "Makefile: make e2e"
+      ],
+      "tdd": {
+        "level": "e2e",
+        "before": [
+          "make e2e падает: нет compose-стека или сценария"
+        ],
+        "after": [
+          "make e2e зелёный: сценарий завершается успешно",
+          "Скачанный файл начинается с PK-сигнатуры ZIP (валидный xlsx)",
+          "Teardown корректно останавливает контейнеры"
+        ]
+      },
+      "depends_on": ["T11", "T15", "T12"]
+    }
+  ],
+  "model_distribution": {
+    "opus": ["T05", "T07", "T10", "T11", "T15", "T16"],
+    "sonnet": ["T01", "T02", "T03", "T04", "T06", "T08", "T09", "T12", "T13", "T14"]
+  }
+}
