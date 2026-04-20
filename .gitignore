@@ -1,2 +1,35 @@
 .claude/
 tz.md
+
+# Node
+node_modules/
+packages/*/node_modules/
+packages/*/dist/
+packages/*/.tsbuildinfo
+*.tsbuildinfo
+
+# Env
+.env
+.env.local
+
+# Generated data
+data/
+packages/*/data/
+
+# Prisma
+packages/shared/prisma/generated/
+
+# Build artefacts
+dist/
+build/
+
+# IDE / OS
+.DS_Store
+.vscode/
+.idea/
+
+# Test
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
