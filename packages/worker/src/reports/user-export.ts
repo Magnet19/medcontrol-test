@@ -1,23 +1,8 @@
 import path from 'node:path';
 import ExcelJS from 'exceljs';
-import {
-  type ReportDefinition,
-  type GenerateContext,
-  registerReportMeta,
-} from '@report-platform/shared';
+import { type ReportDefinition, type GenerateContext, REPORTS_META } from '@report-platform/shared';
 
-const meta = {
-  id: 'user-export',
-  name: 'Выгрузка пользователей',
-  description: 'Список зарегистрированных пользователей за период',
-  formats: ['xlsx'] as ('xlsx' | 'pdf')[],
-  parametersSchema: {
-    dateFrom: { type: 'date' as const, label: 'Дата начала', required: true },
-    dateTo: { type: 'date' as const, label: 'Дата окончания', required: true },
-  },
-};
-
-registerReportMeta(meta);
+const meta = REPORTS_META.find((r) => r.id === 'user-export')!;
 
 interface UserRow {
   id: number;

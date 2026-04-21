@@ -1,28 +1,9 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import PDFDocument from 'pdfkit';
-import {
-  type ReportDefinition,
-  type GenerateContext,
-  registerReportMeta,
-} from '@report-platform/shared';
+import { type ReportDefinition, type GenerateContext, REPORTS_META } from '@report-platform/shared';
 
-const meta = {
-  id: 'sales-summary',
-  name: 'Сводка по продажам',
-  description: 'Агрегаты продаж за выбранный период',
-  formats: ['pdf'] as ('xlsx' | 'pdf')[],
-  parametersSchema: {
-    period: {
-      type: 'string' as const,
-      label: 'Период (day | week | month)',
-      required: true,
-      default: 'week',
-    },
-  },
-};
-
-registerReportMeta(meta);
+const meta = REPORTS_META.find((r) => r.id === 'sales-summary')!;
 
 function mockAggregates(period: string): { label: string; value: number }[] {
   const base: Record<string, number> = { day: 1, week: 7, month: 30 };

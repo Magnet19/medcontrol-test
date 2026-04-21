@@ -1,14 +1,41 @@
 import type { ReportMeta } from './types.js';
 
 /**
- * Catalog metadata consumed by the backend (GET /api/reports) and the frontend.
- * Populated incrementally as each report file under packages/worker/src/reports/
- * registers its metadata here.
+ * Static catalog — single source of truth for report metadata.
  *
- * The worker owns the executable `generate` (see packages/worker/src/registry.ts);
- * this array carries only the shape needed to render a catalog and a form.
+ * Backend reads this array directly (GET /api/reports).
+ * Worker auto-discovers the matching generate() from packages/worker/src/reports/<id>.ts.
+ *
+ * To add a new report:
+ *   1. Add its ReportMeta entry to REPORTS_META below.
+ *   2. Create packages/worker/src/reports/<id>.ts with a matching default export ReportDefinition.
  */
-export const REPORTS_META: ReportMeta[] = [];
+export const REPORTS_META: ReportMeta[] = [
+  {
+    id: 'user-export',
+    name: 'Выгрузка пользователей',
+    description: 'Список зарегистрированных пользователей за период',
+    formats: ['xlsx'],
+    parametersSchema: {
+      dateFrom: { type: 'date', label: 'Дата начала', required: true },
+      dateTo: { type: 'date', label: 'Дата окончания', required: true },
+    },
+  },
+  {
+    id: 'sales-summary',
+    name: 'Сводка по продажам',
+    description: 'Агрегаты продаж за выбранный период',
+    formats: ['pdf'],
+    parametersSchema: {
+      period: {
+        type: 'string',
+        label: 'Период (day | week | month)',
+        required: true,
+        default: 'week',
+      },
+    },
+  },
+];
 
 export function registerReportMeta(meta: ReportMeta): void {
   const existing = REPORTS_META.findIndex((m) => m.id === meta.id);
