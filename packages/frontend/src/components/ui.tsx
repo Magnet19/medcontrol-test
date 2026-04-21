@@ -1,5 +1,10 @@
 import { clsx } from 'clsx';
-import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes } from 'react';
+import type {
+  ButtonHTMLAttributes,
+  HTMLAttributes,
+  InputHTMLAttributes,
+  LabelHTMLAttributes,
+} from 'react';
 
 export function Card({ className, ...p }: HTMLAttributes<HTMLDivElement>) {
   return (
@@ -43,6 +48,6 @@ export function Input({ className, ...p }: InputHTMLAttributes<HTMLInputElement>
   );
 }
 
-export function Label({ className, ...p }: HTMLAttributes<HTMLLabelElement>) {
+export function Label({ className, ...p }: LabelHTMLAttributes<HTMLLabelElement>) {
   return <label className={clsx('text-sm font-medium text-slate-700', className)} {...p} />;
 }
