@@ -33,7 +33,11 @@ test-all: check
 	$(MAKE) -C packages/frontend test || true
 
 e2e:
+	npx playwright install --with-deps chromium
 	npx playwright test
+
+e2e-local:
+	E2E_SKIP_COMPOSE=1 npx playwright test
 
 build:
 	npm run build

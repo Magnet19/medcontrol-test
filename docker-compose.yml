@@ -29,6 +29,59 @@ services:
       timeout: 5s
       retries: 10
 
+  backend:
+    build:
+      context: .
+      dockerfile: packages/backend/Dockerfile
+    container_name: report-platform-backend
+    environment:
+      DATABASE_URL: postgresql://reports:reports@postgres:5432/reports
+      REDIS_URL: redis://redis:6379
+      OUTPUT_DIR: /data/reports
+      PORT: "3000"
+    ports:
+      - "3000:3000"
+    volumes:
+      - reports-output:/data/reports
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  worker:
+    build:
+      context: .
+      dockerfile: packages/worker/Dockerfile
+    container_name: report-platform-worker
+    environment:
+      DATABASE_URL: postgresql://reports:reports@postgres:5432/reports
+      REDIS_URL: redis://redis:6379
+      OUTPUT_DIR: /data/reports
+      WORKER_CONCURRENCY: "2"
+    volumes:
+      - reports-output:/data/reports
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: packages/frontend/Dockerfile
+    container_name: report-platform-frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      backend:
+        condition: service_healthy
+
 volumes:
   pgdata:
   reports-data:
+  reports-output:
