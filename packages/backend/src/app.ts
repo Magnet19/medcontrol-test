@@ -1,5 +1,6 @@
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 import { reportsRouter } from './routes/reports.js';
+import { tasksRouter } from './routes/tasks.js';
 
 export function createApp(): Express {
   const app = express();
@@ -10,6 +11,7 @@ export function createApp(): Express {
   });
 
   app.use('/api/reports', reportsRouter);
+  app.use('/api/tasks', tasksRouter);
 
   app.use((req, res) => {
     res.status(404).json({ error: 'not_found', path: req.path });
