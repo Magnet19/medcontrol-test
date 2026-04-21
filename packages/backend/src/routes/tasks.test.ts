@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 const findMany = vi.fn();
 const count = vi.fn();
@@ -90,6 +93,56 @@ describe('GET /api/tasks/:id', () => {
   it('404 when absent', async () => {
     findUnique.mockResolvedValue(null);
     const res = await request(createApp()).get('/api/tasks/nope');
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('task_not_found');
+  });
+});
+
+describe('GET /api/tasks/:id/download', () => {
+  beforeEach(() => {
+    findUnique.mockReset();
+  });
+
+  it('streams the file with correct Content-Type and Disposition for xlsx', async () => {
+    const tmp = path.join(os.tmpdir(), `download-test-${Date.now()}.xlsx`);
+    fs.writeFileSync(tmp, Buffer.from('PKfake-xlsx-body'));
+    findUnique.mockResolvedValue(
+      sampleTask({ id: 'done', status: 'completed', resultUrl: tmp }),
+    );
+    const res = await request(createApp())
+      .get('/api/tasks/done/download')
+      .buffer(true)
+      .parse((response, cb) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (c: Buffer) => chunks.push(c));
+        response.on('end', () => cb(null, Buffer.concat(chunks)));
+      });
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('spreadsheetml');
+    expect(res.headers['content-disposition']).toContain('.xlsx');
+    expect((res.body as Buffer).toString()).toContain('PKfake-xlsx-body');
+    fs.unlinkSync(tmp);
+  });
+
+  it('409 when task is still pending', async () => {
+    findUnique.mockResolvedValue(sampleTask({ status: 'pending' }));
+    const res = await request(createApp()).get('/api/tasks/t/download');
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('task_not_completed');
+  });
+
+  it('404 when the stored resultUrl does not exist on disk', async () => {
+    findUnique.mockResolvedValue(
+      sampleTask({ status: 'completed', resultUrl: '/tmp/definitely-not-here.pdf' }),
+    );
+    const res = await request(createApp()).get('/api/tasks/t/download');
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('file_missing');
+  });
+
+  it('404 when task does not exist', async () => {
+    findUnique.mockResolvedValue(null);
+    const res = await request(createApp()).get('/api/tasks/ghost/download');
     expect(res.status).toBe(404);
     expect(res.body.error).toBe('task_not_found');
   });

@@ -1,6 +1,14 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import fs from 'node:fs';
+import fsp from 'node:fs/promises';
+import path from 'node:path';
 import { prisma } from '../db.js';
+
+const MIME_BY_EXT: Record<string, string> = {
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.pdf': 'application/pdf',
+};
 
 const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
@@ -37,4 +45,34 @@ tasksRouter.get('/:id', async (req, res) => {
     return;
   }
   res.json(task);
+});
+
+tasksRouter.get('/:id/download', async (req, res, next) => {
+  const task = await prisma.task.findUnique({ where: { id: req.params.id } });
+  if (!task) {
+    res.status(404).json({ error: 'task_not_found', taskId: req.params.id });
+    return;
+  }
+  if (task.status !== 'completed') {
+    res.status(409).json({ error: 'task_not_completed', status: task.status });
+    return;
+  }
+  if (!task.resultUrl) {
+    res.status(404).json({ error: 'result_missing' });
+    return;
+  }
+  try {
+    await fsp.access(task.resultUrl);
+  } catch {
+    res.status(404).json({ error: 'file_missing' });
+    return;
+  }
+  const ext = path.extname(task.resultUrl).toLowerCase();
+  const mime = MIME_BY_EXT[ext] ?? 'application/octet-stream';
+  const filename = `${task.reportId}-${task.id}${ext}`;
+  res.setHeader('Content-Type', mime);
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  const stream = fs.createReadStream(task.resultUrl);
+  stream.on('error', next);
+  stream.pipe(res);
 });
