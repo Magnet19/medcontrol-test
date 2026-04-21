@@ -1,4 +1,5 @@
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
+import { reportsRouter } from './routes/reports.js';
 
 export function createApp(): Express {
   const app = express();
@@ -7,6 +8,8 @@ export function createApp(): Express {
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok' });
   });
+
+  app.use('/api/reports', reportsRouter);
 
   app.use((req, res) => {
     res.status(404).json({ error: 'not_found', path: req.path });
