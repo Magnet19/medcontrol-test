@@ -1,6 +1,7 @@
 import { createApp } from './app.js';
 import { loadEnv } from './env.js';
 import { prisma } from './db.js';
+import { closeQueue } from './services/queue.js';
 
 async function main() {
   const env = loadEnv();
@@ -13,6 +14,7 @@ async function main() {
   const shutdown = async (signal: string) => {
     console.log(`[backend] received ${signal}, shutting down`);
     server.close(() => console.log('[backend] http server closed'));
+    await closeQueue();
     await prisma.$disconnect();
     process.exit(0);
   };
