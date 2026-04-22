@@ -25,7 +25,7 @@ export const REPORTS_META: ReportMeta[] = [
     id: "sales-summary",
     name: "Сводка по продажам",
     description: "Агрегаты продаж за выбранный период",
-    formats: ["xlsx", "pdf"],
+    formats: ["pdf"],
     parametersSchema: {
       period: {
         type: "string",
