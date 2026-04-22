@@ -1,4 +1,4 @@
-.PHONY: up down logs check typecheck test test-all e2e build clean install migrate
+.PHONY: up down logs check typecheck test test-all e2e build clean install migrate seed
 
 up:
 	docker compose up -d postgres redis
@@ -43,7 +43,10 @@ build:
 	npm run build
 
 migrate:
-	$(MAKE) -C packages/shared migrate
+	npm -w @report-platform/shared run prisma:migrate
+
+seed:
+	npm -w @report-platform/shared run prisma:seed
 
 clean:
 	rm -rf node_modules packages/*/node_modules packages/*/dist

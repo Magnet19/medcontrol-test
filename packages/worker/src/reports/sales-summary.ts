@@ -1,24 +1,27 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import PDFDocument from 'pdfkit';
-import { type ReportDefinition, type GenerateContext, REPORTS_META } from '@report-platform/shared';
+import {
+  type ReportDefinition,
+  type GenerateContext,
+  type SalesPeriod,
+  REPORTS_META,
+} from '@report-platform/shared';
+import { createMockSources } from '../sources/index.js';
 
 const meta = REPORTS_META.find((r) => r.id === 'sales-summary')!;
 
-function mockAggregates(period: string): { label: string; value: number }[] {
-  const base: Record<string, number> = { day: 1, week: 7, month: 30 };
-  const days = base[period] ?? 7;
-  return [
-    { label: 'Выручка', value: days * 12345 },
-    { label: 'Заказов', value: days * 42 },
-    { label: 'Средний чек', value: Math.round((days * 12345) / (days * 42)) },
-  ];
+function normalizePeriod(raw: unknown): SalesPeriod {
+  return raw === 'day' || raw === 'week' || raw === 'month' ? raw : 'week';
 }
 
 const report: ReportDefinition = {
   ...meta,
   async generate(ctx: GenerateContext): Promise<string> {
-    const period = String(ctx.parameters.period ?? 'week');
+    const period = normalizePeriod(ctx.parameters.period);
+    const sources = ctx.sources ?? createMockSources();
+    const aggregates = await sources.sales.summarize(period);
+
     const filePath = path.join(ctx.outputDir, `${ctx.taskId}.pdf`);
     const doc = new PDFDocument({ size: 'A4', margin: 50 });
     const stream = fs.createWriteStream(filePath);
@@ -28,7 +31,7 @@ const report: ReportDefinition = {
     doc.moveDown();
     doc.fontSize(12).text(`Period: ${period}`);
     doc.moveDown();
-    for (const row of mockAggregates(period)) {
+    for (const row of aggregates) {
       doc.text(`${row.label}: ${row.value}`);
     }
     doc.end();

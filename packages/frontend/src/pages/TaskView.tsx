@@ -2,13 +2,8 @@ import { useParams } from 'react-router-dom';
 import { useTaskPolling } from '@/hooks/useTaskPolling';
 import { taskDownloadUrl } from '@/lib/api';
 import { Card, Button } from '@/components/ui';
-
-const STATUS_COLOR: Record<string, string> = {
-  pending: 'bg-slate-200 text-slate-700',
-  processing: 'bg-blue-100 text-blue-800',
-  completed: 'bg-green-100 text-green-800',
-  failed: 'bg-red-100 text-red-800',
-};
+import { Breadcrumbs } from '@/components/Breadcrumbs';
+import { TASK_STATUS_LABEL, TASK_STATUS_COLOR } from '@/lib/taskStatus';
 
 export function TaskView() {
   const { taskId } = useParams<{ taskId: string }>();
@@ -21,6 +16,7 @@ export function TaskView() {
 
   return (
     <div className="mx-auto max-w-3xl p-6">
+      <Breadcrumbs items={[{ label: 'Задачи', to: '/tasks' }, { label: `Задача ${task.id}` }]} />
       <Card className="space-y-4">
         <div>
           <h1 className="text-xl font-semibold">Задача {task.id}</h1>
@@ -29,10 +25,10 @@ export function TaskView() {
         <div>
           <span
             className={`inline-block rounded px-2 py-1 text-xs font-semibold ${
-              STATUS_COLOR[task.status] ?? 'bg-slate-200'
+              TASK_STATUS_COLOR[task.status] ?? 'bg-slate-200'
             }`}
           >
-            {task.status}
+            {TASK_STATUS_LABEL[task.status] ?? task.status}
           </span>
         </div>
         {task.status === 'failed' && task.error && (

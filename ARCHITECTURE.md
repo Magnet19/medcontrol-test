@@ -3,9 +3,10 @@
 ## Содержание
 
 1. [Архитектура — компоненты, потоки данных, границы ответственности](#1-архитектура)
-2. [Как добавить новый отчёт — пошаговая инструкция](#2-как-добавить-новый-отчёт)
-3. [Принятые решения и альтернативы](#3-принятые-решения-и-альтернативы)
-4. [Что не сделали и почему. Что бы добавили для продакшена](#4-что-не-сделали-и-почему)
+2. [Источники данных — абстракция над БД, API, файлами, моками](#2-источники-данных)
+3. [Как добавить новый отчёт — пошаговая инструкция](#3-как-добавить-новый-отчёт)
+4. [Принятые решения и альтернативы](#4-принятые-решения-и-альтернативы)
+5. [Что не сделали и почему. Что бы добавили для продакшена](#5-что-не-сделали-и-почему)
 
 ---
 
@@ -133,11 +134,178 @@ CREATE TABLE "Task" (
 
 ---
 
-## 2. Как добавить новый отчёт
+## 2. Источники данных
+
+### 2.1 Требование и мотивация
+
+> **Требование:** «Данные для отчётов приходят из разных источников: внутренние базы данных, внешние API, файлы. Для прототипа источник можно упростить (локальная БД, публичный API, моковые данные) — но должно быть понятно, что в реальности источники будут разными.»
+
+Прямое обращение к Prisma / fetch / fs внутри файла отчёта создаёт две проблемы:
+
+1. **Связанность** — смена источника (БД → API) требует переписывания отчёта целиком.
+2. **Тестируемость** — отчёт нельзя проверить без реальной БД или сети.
+
+Решение — два слоя абстракции между отчётом и источником: **Data Sources** (низкий уровень) и **Repositories** (высокий уровень).
+
+### 2.2 Схема слоёв
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Report (user-export.ts / sales-summary.ts)             │
+│  Работает ТОЛЬКО с репозиториями через ctx.sources      │
+└─────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│  Repositories — доменные абстракции                     │
+│  UserRepository.findInRange(from, to)                   │
+│  SalesRepository.summarize(period)                      │
+└─────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│  Data Sources — технические адаптеры                    │
+│  DatabaseSource  │ ApiSource │ FileSource │ MockSource  │
+│  (Prisma)        │  (fetch)  │   (fs)    │ (fixtures)   │
+└─────────────────────────────────────────────────────────┘
+                          ↓
+            PostgreSQL  │ HTTP API │ локальные файлы
+```
+
+### 2.3 Контракты
+
+Все типы объявлены в `packages/shared/src/types.ts` — shared между backend, worker и frontend:
+
+```typescript
+// --- Низкий уровень: источники ---
+export interface DatabaseSource {
+  findUsers(dateFrom: Date, dateTo: Date): Promise<UserRecord[]>;
+}
+export interface ApiSource {
+  get<T>(path: string, query?: Record<string, string | number>): Promise<T>;
+}
+export interface FileSource {
+  readJson<T>(relativePath: string): Promise<T>;
+  readCsv(relativePath: string): Promise<string[][]>;
+}
+
+// --- Высокий уровень: доменные репозитории ---
+export interface UserRepository {
+  findInRange(dateFrom: Date, dateTo: Date): Promise<UserRecord[]>;
+}
+export interface SalesRepository {
+  summarize(period: SalesPeriod): Promise<SalesAggregate[]>;
+}
+
+// --- Контейнер, инжектируемый в каждый отчёт ---
+export interface ReportSources {
+  users: UserRepository;
+  sales: SalesRepository;
+}
+
+export interface GenerateContext {
+  parameters: Record<string, unknown>;
+  format: ReportFormat;
+  outputDir: string;
+  taskId: string;
+  sources?: ReportSources; // ← инжектируется Worker'ом
+}
+```
+
+### 2.4 Реализации
+
+| Источник | Файл | Что делает |
+|---|---|---|
+| **DatabaseSource** | `packages/worker/src/sources/database.ts` | Оборачивает `PrismaClient`, читает таблицу `User` через `$queryRaw` |
+| **ApiSource** | `packages/worker/src/sources/api.ts` | HTTP GET через `fetch` с таймаутом и базовым URL |
+| **FileSource** | `packages/worker/src/sources/file.ts` | Читает JSON/CSV из `baseDir` с защитой от `../` escape |
+| **MockSource** | `packages/worker/src/sources/mock.ts` | Возвращает фиктивные данные — для unit-тестов и fallback |
+
+Репозитории, использующие источники:
+
+| Репозиторий | Файл | Источник в production | Источник в тестах |
+|---|---|---|---|
+| `UserRepository` | `packages/worker/src/repositories/user-repository.ts` | `DatabaseSource` → PostgreSQL | `MockDatabaseSource` |
+| `SalesRepository` | `packages/worker/src/repositories/sales-repository.ts` | `ApiSource` → jsonplaceholder.typicode.com | `MockApiSource` |
+
+### 2.5 Фабрика источников
+
+`packages/worker/src/sources/index.ts` экспортирует две фабрики:
+
+```typescript
+// Production: реальные адаптеры
+export function createDefaultSources(options: { prisma: PrismaClient }): ReportSources;
+
+// Тесты: моковые адаптеры с детерминированными данными
+export function createMockSources(): ReportSources;
+```
+
+Processor при старте вызывает `createDefaultSources({ prisma })` и инжектирует результат в каждый `GenerateContext`. Тесты передают свои моки напрямую через `createProcessor({ sources: ... })`.
+
+### 2.6 Потоки данных в двух текущих отчётах
+
+**`user-export` — внутренняя БД:**
+
+```
+ctx.sources.users.findInRange(from, to)
+    ↓
+UserRepository (packages/worker/src/repositories/user-repository.ts)
+    ↓
+DatabaseSource.findUsers(from, to)
+    ↓
+prisma.$queryRaw`SELECT ... FROM "User" WHERE created_at BETWEEN ...`
+    ↓
+PostgreSQL (seed'ится 40 строк через `make seed`)
+```
+
+**`sales-summary` — внешний публичный API:**
+
+```
+ctx.sources.sales.summarize(period)
+    ↓
+SalesRepository (packages/worker/src/repositories/sales-repository.ts)
+    ↓
+ApiSource.get('posts', { _limit: N })
+    ↓
+fetch('https://jsonplaceholder.typicode.com/posts?_limit=N')
+    ↓
+[posts] → агрегация: выручка / продаж / продавцов / средний чек
+```
+
+### 2.7 Добавление нового источника / репозитория
+
+Пример: отчёт должен читать CSV-файл с прайсом.
+
+1. Создать репозиторий `packages/worker/src/repositories/pricing-repository.ts` с интерфейсом `PricingRepository` (объявить в `shared/src/types.ts`). Внутри — `fileSource.readCsv('prices.csv')`.
+2. Добавить поле `pricing: PricingRepository` в `ReportSources`.
+3. В `createDefaultSources` собрать репозиторий из `createFileSource({ baseDir: '/data/sources' })`.
+4. В `createMockSources` — из `createMockFileSource({ 'prices.csv': '...' })`.
+5. Отчёт использует `ctx.sources.pricing.getPrices()` — ничего не знает о `fs`.
+
+### 2.8 Что это даёт
+
+| Свойство | Как достигается |
+|---|---|
+| **Смена источника без переписывания отчёта** | Отчёт зависит от `UserRepository`, а не от Prisma. Меняется реализация репозитория — отчёт остаётся тем же |
+| **Unit-тесты без БД и сети** | Тесты отчётов вызывают `generate()` без `ctx.sources` → отчёт использует `createMockSources()` как fallback |
+| **Разные источники для одного репозитория** | `UserRepository` может иметь две реализации: через БД для prod и через API для read-replica в другой среде |
+| **Single source of truth для типов данных** | `UserRecord`, `SalesAggregate` объявлены в shared — отчёт и репозиторий используют одни типы |
+
+### 2.9 Упрощения прототипа
+
+| Что упрощено | Как бы сделали в продакшене |
+|---|---|
+| `ApiSource` — без retry и circuit-breaker | `undici` + `p-retry` с экспоненциальным backoff, health-checks, Dead Letter Queue для упавших выборок |
+| Публичный API без аутентификации | Секреты через Vault / AWS Secrets Manager, rotation, per-tenant scoping |
+| `DatabaseSource` делает `$queryRaw` напрямую | Отдельная read-реплика, connection pooling per source, таймауты на уровне запроса |
+| `FileSource` — локальный диск | S3 / MinIO с pre-signed URL и lifecycle-политиками |
+| Один набор `ReportSources` на все отчёты | Per-report bundle: отчёт декларирует, какие источники ему нужны (`requires: ['users', 'pricing']`) — worker собирает только их |
+
+---
+
+## 3. Как добавить новый отчёт
 
 > **Ключевое бизнес-требование:** от идеи до готового отчёта в продакшене — один рабочий день. Архитектура платформы спроектирована так, чтобы разработчик мог сфокусироваться только на бизнес-логике отчёта, не трогая инфраструктурный код.
 
-### 2.1 Концепция: Report Registry
+### 3.1 Концепция: Report Registry
 
 Все отчёты в системе реализованы как самостоятельные модули в папке `packages/worker/src/reports/`. При старте Worker автоматически сканирует эту папку и регистрирует все найденные отчёты. **Ни API, ни фронтенд не нужно менять** при добавлении нового отчёта.
 
@@ -182,7 +350,7 @@ export interface GenerateContext {
 }
 ```
 
-### 2.2 Пошаговая инструкция
+### 3.2 Пошаговая инструкция
 
 **Шаг 1.** Создайте файл в `packages/worker/src/reports/`:
 
@@ -245,7 +413,7 @@ docker-compose up --build worker
 
 Отчёт автоматически появится в UI — фронтенд получит его через `GET /api/reports`, а форма параметров будет сгенерирована на основе `parametersSchema`.
 
-### 2.3 Как это работает под капотом
+### 3.3 Как это работает под капотом
 
 ```typescript
 // packages/worker/src/registry.ts (упрощённо)
@@ -276,7 +444,7 @@ export function getAllReports(): ReportDefinition[] {
 
 ---
 
-## 3. Принятые решения и альтернативы
+## 4. Принятые решения и альтернативы
 
 ### Решение 1: Выделение Worker в отдельный процесс
 
@@ -340,11 +508,11 @@ export function getAllReports(): ReportDefinition[] {
 
 ---
 
-## 4. Что не сделали и почему
+## 5. Что не сделали и почему
 
 Следуя принципу «думайте широко, реализуйте узко», мы осознанно оставили ряд аспектов за рамками прототипа. Ниже — что именно, почему, и как бы мы это реализовали в продакшене.
 
-### 4.1 Аутентификация и авторизация
+### 5.1 Аутентификация и авторизация
 
 **Что сделали:** Все эндпоинты открыты, аутентификация отсутствует. В ключевых местах кода оставлены комментарии `// TODO: Auth`.
 
@@ -355,7 +523,7 @@ export function getAllReports(): ReportDefinition[] {
 - Ролевая модель: роли привязаны к `reportId` (кто какие отчёты может запускать)
 - Интеграция с корпоративным SSO (OAuth2 / SAML)
 
-### 4.2 Хранение файлов
+### 5.2 Хранение файлов
 
 **Что сделали:** Сгенерированные файлы пишутся на Docker Volume, общий между API и Worker.
 
@@ -367,7 +535,7 @@ export function getAllReports(): ReportDefinition[] {
 - CDN для раздачи файлов
 - Lifecycle-политики S3 для автоудаления старых файлов
 
-### 4.3 Реал-тайм обновления статусов
+### 5.3 Реал-тайм обновления статусов
 
 **Что сделали:** Frontend опрашивает API каждые 3 секунды (polling).
 
@@ -377,7 +545,7 @@ export function getAllReports(): ReportDefinition[] {
 - Server-Sent Events (SSE) — Worker при обновлении статуса публикует в Redis Pub/Sub → API стримит события клиенту
 - SSE предпочтительнее WebSockets: однонаправленный поток (сервер → клиент), нативная поддержка браузеров, работает через стандартные HTTP-прокси
 
-### 4.4 Изоляция кода отчётов
+### 5.4 Изоляция кода отчётов
 
 **Что сделали:** Все отчёты выполняются в процессе Worker. Если один отчёт упадёт с OOM или зависнет — пострадает весь Worker.
 
@@ -386,7 +554,7 @@ export function getAllReports(): ReportDefinition[] {
 - Или: запуск в ephemeral-контейнерах (Kubernetes Jobs / AWS Lambda)
 - Плюс: sandbox через `vm2` или `isolated-vm` для кастомных отчётов от пользователей
 
-### 4.5 Мониторинг и наблюдаемость
+### 5.5 Мониторинг и наблюдаемость
 
 **Что не сделали:** Логирование минимальное (`console.log`), нет метрик, нет трейсинга.
 
@@ -396,7 +564,7 @@ export function getAllReports(): ReportDefinition[] {
 - Prometheus-метрики: время генерации, процент ошибок, размер очереди
 - Алерты при росте очереди или повышенном проценте ошибок
 
-### 4.6 Тестирование
+### 5.6 Тестирование
 
 **Что сделали:** Ручное тестирование через UI.
 

@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { listReports, runReport } from '@/lib/api';
 import { ParametersForm } from '@/components/ParametersForm';
 import { Card } from '@/components/ui';
+import { Breadcrumbs } from '@/components/Breadcrumbs';
 
 export function RunReport() {
   const { id } = useParams<{ id: string }>();
@@ -16,6 +17,7 @@ export function RunReport() {
 
   return (
     <div className="mx-auto max-w-2xl p-6">
+      <Breadcrumbs items={[{ label: 'Каталог отчётов', to: '/' }, { label: report.name }]} />
       <Card className="space-y-4">
         <div>
           <h1 className="text-xl font-semibold">{report.name}</h1>

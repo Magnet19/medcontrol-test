@@ -62,6 +62,7 @@ make -C packages/frontend dev   # UI  → http://localhost:5173
 | `make e2e` | E2E тесты (поднимает Docker сам) |
 | `make e2e-local` | E2E тесты против уже запущенного стека |
 | `make migrate` | Применить Prisma-миграции |
+| `make seed` | Засидить БД демо-пользователями для `user-export` |
 | `make clean` | Удалить node_modules и dist |
 
 ## Структура
@@ -102,18 +103,26 @@ Backend начнёт отдавать новый отчёт в каталоге 
 ```ts
 import type { ReportDefinition } from '@report-platform/shared';
 import { REPORTS_META } from '@report-platform/shared';
+import { createMockSources } from '../sources/index.js';
 
 const meta = REPORTS_META.find((r) => r.id === 'my-report')!;
 
 const report: ReportDefinition = {
   ...meta,
   async generate(ctx) {
-    // ctx.outputDir — директория для файла результата
-    // ctx.taskId    — уникальный ID задачи (используй как имя файла)
-    // ctx.parameters — провалидированные параметры из шага 1
+    // ctx.outputDir    — директория для файла результата
+    // ctx.taskId       — уникальный ID задачи (используй как имя файла)
+    // ctx.parameters   — провалидированные параметры из шага 1
+    // ctx.sources      — репозитории данных (БД, API, файлы). В тестах — не передаётся
+    const sources = ctx.sources ?? createMockSources();
+    const users = await sources.users.findInRange(
+      new Date(String(ctx.parameters.dateFrom)),
+      new Date(String(ctx.parameters.dateTo)),
+    );
+
     const filePath = `${ctx.outputDir}/${ctx.taskId}.xlsx`;
     // ... генерация через ExcelJS / PDFKit / etc ...
-    return filePath;   // путь к файлу — worker запишет его в БД
+    return filePath;
   },
 };
 
@@ -121,6 +130,21 @@ export default report;
 ```
 
 Worker обнаружит файл автоматически при следующем запуске.
+
+## Источники данных
+
+Отчёты получают данные через **репозитории** (`ctx.sources.users`, `ctx.sources.sales`, …), не обращаясь к Prisma / `fetch` / `fs` напрямую. Это позволяет подменять источник (БД ↔ API ↔ файл ↔ мок) без переписывания отчёта.
+
+| Источник | Реализация | Используется в |
+|---|---|---|
+| **DatabaseSource** | Prisma → PostgreSQL | `user-export` (таблица `User`) |
+| **ApiSource** | `fetch` → публичный API | `sales-summary` (jsonplaceholder.typicode.com) |
+| **FileSource** | `fs` → JSON/CSV в `data/sources/` | — (готов к использованию) |
+| **MockSource** | фикстуры в памяти | Unit-тесты, fallback когда `ctx.sources` не передан |
+
+Полный обзор слоёв и гайд «как добавить новый источник/репозиторий» — в [ARCHITECTURE.md § 2. Источники данных](ARCHITECTURE.md#2-источники-данных).
+
+> **Демо-данные для БД:** после `make migrate` запусти `make seed` — вставит 40 тестовых пользователей, чтобы `user-export` вернул непустой XLSX.
 
 ## E2E тесты
 

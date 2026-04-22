@@ -22,3 +22,12 @@ model Task {
   @@index([createdAt])
   @@map("Task")
 }
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([createdAt])
+  @@map("User")
+}

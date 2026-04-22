@@ -43,12 +43,18 @@ describe('createProcessor', () => {
       where: { id: 'abc' },
       data: { status: 'processing' },
     });
-    expect(report.generate).toHaveBeenCalledWith({
-      parameters: { x: 1 },
-      format: 'xlsx',
-      outputDir: '/data',
-      taskId: 'abc',
-    });
+    expect(report.generate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        parameters: { x: 1 },
+        format: 'xlsx',
+        outputDir: '/data',
+        taskId: 'abc',
+        sources: expect.objectContaining({
+          users: expect.any(Object),
+          sales: expect.any(Object),
+        }),
+      }),
+    );
     expect(db.update).toHaveBeenLastCalledWith(
       expect.objectContaining({
         where: { id: 'abc' },
