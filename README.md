@@ -159,32 +159,19 @@ make e2e-local
 
 ## Полезные команды
 
-# Статус контейнеров
-
 ```bash
+# Статус контейнеров
 docker compose ps
-```
 
 # Логи бэкенда
-
-```bash
 docker compose logs backend --tail=50
-```
 
 # Логи воркера
-
-```bash
 docker compose logs worker --tail=50
-```
 
 # Если воркер упал — перезапустить:
-
-```bash
 docker compose up -d worker
-```
 
 # Логи Redis / Postgres
-
-```bash
 docker compose logs redis postgres --tail=20
 ```
