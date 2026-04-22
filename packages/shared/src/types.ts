@@ -7,6 +7,7 @@ export interface ParameterField {
   label: string;
   required: boolean;
   default?: string | number;
+  options?: string[];
 }
 
 export interface GenerateContext {

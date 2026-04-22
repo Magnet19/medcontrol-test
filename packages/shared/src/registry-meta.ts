@@ -1,4 +1,4 @@
-import type { ReportMeta } from './types.js';
+import type { ReportMeta } from "./types.js";
 
 /**
  * Static catalog — single source of truth for report metadata.
@@ -12,26 +12,27 @@ import type { ReportMeta } from './types.js';
  */
 export const REPORTS_META: ReportMeta[] = [
   {
-    id: 'user-export',
-    name: 'Выгрузка пользователей',
-    description: 'Список зарегистрированных пользователей за период',
-    formats: ['xlsx', 'pdf'],
+    id: "user-export",
+    name: "Выгрузка пользователей",
+    description: "Список зарегистрированных пользователей за период",
+    formats: ["xlsx", "pdf"],
     parametersSchema: {
-      dateFrom: { type: 'date', label: 'Дата начала', required: true },
-      dateTo: { type: 'date', label: 'Дата окончания', required: true },
+      dateFrom: { type: "date", label: "Дата начала", required: true },
+      dateTo: { type: "date", label: "Дата окончания", required: true },
     },
   },
   {
-    id: 'sales-summary',
-    name: 'Сводка по продажам',
-    description: 'Агрегаты продаж за выбранный период',
-    formats: ['xlsx', 'pdf'],
+    id: "sales-summary",
+    name: "Сводка по продажам",
+    description: "Агрегаты продаж за выбранный период",
+    formats: ["xlsx", "pdf"],
     parametersSchema: {
       period: {
-        type: 'string',
-        label: 'Период (day | week | month)',
+        type: "string",
+        label: "Период",
         required: true,
-        default: 'week',
+        default: "week",
+        options: ["day", "week", "month"],
       },
     },
   },

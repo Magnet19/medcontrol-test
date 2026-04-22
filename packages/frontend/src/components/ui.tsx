@@ -4,6 +4,7 @@ import type {
   HTMLAttributes,
   InputHTMLAttributes,
   LabelHTMLAttributes,
+  SelectHTMLAttributes,
 } from 'react';
 
 export function Card({ className, ...p }: HTMLAttributes<HTMLDivElement>) {
@@ -50,4 +51,16 @@ export function Input({ className, ...p }: InputHTMLAttributes<HTMLInputElement>
 
 export function Label({ className, ...p }: LabelHTMLAttributes<HTMLLabelElement>) {
   return <label className={clsx('text-sm font-medium text-slate-700', className)} {...p} />;
+}
+
+export function Select({ className, ...p }: SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <select
+      className={clsx(
+        'w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand bg-white',
+        className,
+      )}
+      {...p}
+    />
+  );
 }

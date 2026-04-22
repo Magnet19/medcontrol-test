@@ -23,8 +23,8 @@ export function App() {
               end
               className={({ isActive }) =>
                 isActive
-                  ? "font-semibold text-brand"
-                  : "font-semibold text-slate-600 hover:text-brand"
+                  ? "font-semibold text-brand transition-all"
+                  : "text-slate-600 hover:text-brand transition-all"
               }
             >
               Каталог отчётов
@@ -33,8 +33,8 @@ export function App() {
               to="/tasks"
               className={({ isActive }) =>
                 isActive
-                  ? "font-semibold text-brand"
-                  : "font-semibold text-slate-600 hover:text-brand"
+                  ? "font-semibold text-brand transition-all"
+                  : "text-slate-600 hover:text-brand transition-all"
               }
             >
               Задачи

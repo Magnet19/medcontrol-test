@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import type { ParameterField } from '@report-platform/shared';
-import { Button, Input, Label } from './ui';
+import { Button, Input, Label, Select } from './ui';
 
 export interface ParametersFormProps {
   schema: Record<string, ParameterField> | null;
@@ -92,14 +92,28 @@ export function ParametersForm({
             {field.label}
             {field.required && <span className="text-red-600"> *</span>}
           </Label>
-          <Input
-            id={key}
-            type={inputTypeFor(field)}
-            value={values[key] ?? ''}
-            onChange={(e) =>
-              setValues((prev) => ({ ...prev, [key]: e.target.value }))
-            }
-          />
+          {field.options ? (
+            <Select
+              id={key}
+              value={values[key] ?? ''}
+              onChange={(e) =>
+                setValues((prev) => ({ ...prev, [key]: e.target.value }))
+              }
+            >
+              {field.options.map((opt) => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </Select>
+          ) : (
+            <Input
+              id={key}
+              type={inputTypeFor(field)}
+              value={values[key] ?? ''}
+              onChange={(e) =>
+                setValues((prev) => ({ ...prev, [key]: e.target.value }))
+              }
+            />
+          )}
           {errors[key] && <p className="text-sm text-red-600">{errors[key]}</p>}
         </div>
       ))}
