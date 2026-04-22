@@ -22,6 +22,11 @@ const report: ReportDefinition = {
     const sources = ctx.sources ?? createMockSources();
     const aggregates = await sources.sales.summarize(period);
 
+    if (ctx.format === 'xlsx') {
+      // TODO: XLSX с несколькими листами (агрегаты + сырые данные по продавцам)
+      throw new Error('sales-summary: XLSX format is not yet implemented');
+    }
+
     const filePath = path.join(ctx.outputDir, `${ctx.taskId}.pdf`);
     const doc = new PDFDocument({ size: 'A4', margin: 50 });
     const stream = fs.createWriteStream(filePath);

@@ -14,6 +14,11 @@ const report: ReportDefinition = {
     const sources = ctx.sources ?? createMockSources();
     const users = await sources.users.findInRange(dateFrom, dateTo);
 
+    if (ctx.format === 'pdf') {
+      // TODO: PDF с инфографикой (таблица пользователей + диаграмма регистраций по дням)
+      throw new Error('user-export: PDF format is not yet implemented');
+    }
+
     const wb = new ExcelJS.Workbook();
     const sheet = wb.addWorksheet('Users');
     sheet.columns = [

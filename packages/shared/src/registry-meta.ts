@@ -15,7 +15,7 @@ export const REPORTS_META: ReportMeta[] = [
     id: 'user-export',
     name: 'Выгрузка пользователей',
     description: 'Список зарегистрированных пользователей за период',
-    formats: ['xlsx'],
+    formats: ['xlsx', 'pdf'],
     parametersSchema: {
       dateFrom: { type: 'date', label: 'Дата начала', required: true },
       dateTo: { type: 'date', label: 'Дата окончания', required: true },
@@ -25,7 +25,7 @@ export const REPORTS_META: ReportMeta[] = [
     id: 'sales-summary',
     name: 'Сводка по продажам',
     description: 'Агрегаты продаж за выбранный период',
-    formats: ['pdf'],
+    formats: ['xlsx', 'pdf'],
     parametersSchema: {
       period: {
         type: 'string',
