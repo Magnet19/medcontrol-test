@@ -6,6 +6,7 @@ COPY packages/frontend/package.json packages/frontend/
 RUN npm install --workspace=@report-platform/shared --workspace=@report-platform/frontend --include-workspace-root
 COPY packages/shared packages/shared
 COPY packages/frontend packages/frontend
+RUN npx prisma generate --schema=packages/shared/prisma/schema.prisma
 RUN npm run build --workspace=@report-platform/shared
 RUN npm run build --workspace=@report-platform/frontend
 
