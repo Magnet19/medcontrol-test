@@ -73,9 +73,20 @@ export interface SalesRepository {
   summarize(period: SalesPeriod): Promise<SalesAggregate[]>;
 }
 
+export interface CatalogRecord {
+  categoryId: number;
+  categoryName: string;
+  region: string;
+}
+
+export interface CatalogRepository {
+  getCategories(): Promise<CatalogRecord[]>;
+}
+
 export interface ReportSources {
   users: UserRepository;
   sales: SalesRepository;
+  catalog: CatalogRepository;
 }
 
 export type ReportMeta = Omit<ReportDefinition, 'generate'>;

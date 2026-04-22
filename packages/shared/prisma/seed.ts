@@ -10,11 +10,11 @@ async function main(): Promise<void> {
   }
 
   const now = new Date();
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const rows = Array.from({ length: 40 }).map((_, i) => {
-    const ratio = i / 40;
+  const threeMonthsAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+  const rows = Array.from({ length: 120 }).map((_, i) => {
+    const ratio = i / 120;
     const createdAt = new Date(
-      thirtyDaysAgo.getTime() + (now.getTime() - thirtyDaysAgo.getTime()) * ratio,
+      threeMonthsAgo.getTime() + (now.getTime() - threeMonthsAgo.getTime()) * ratio,
     );
     return {
       email: `seed-user-${i + 1}@example.com`,
@@ -23,7 +23,7 @@ async function main(): Promise<void> {
   });
 
   await prisma.user.createMany({ data: rows });
-  console.log(`[seed] inserted ${rows.length} users`);
+  console.log(`[seed] inserted ${rows.length} users (last 3 months)`);
 }
 
 main()

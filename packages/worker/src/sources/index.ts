@@ -4,6 +4,7 @@ import { createDatabaseSource } from './database.js';
 import { createMockApiSource, createMockDatabaseSource } from './mock.js';
 import { createUserRepository } from '../repositories/user-repository.js';
 import { createSalesRepository } from '../repositories/sales-repository.js';
+import { createCatalogRepository } from '../repositories/catalog-repository.js';
 
 export { createDatabaseSource } from './database.js';
 export { createApiSource } from './api.js';
@@ -27,6 +28,7 @@ export function createDefaultSources(options: DefaultSourcesOptions): ReportSour
   return {
     users: createUserRepository(db),
     sales: createSalesRepository(salesApi),
+    catalog: createCatalogRepository(),
   };
 }
 
@@ -34,5 +36,6 @@ export function createMockSources(): ReportSources {
   return {
     users: createUserRepository(createMockDatabaseSource()),
     sales: createSalesRepository(createMockApiSource()),
+    catalog: createCatalogRepository(),
   };
 }

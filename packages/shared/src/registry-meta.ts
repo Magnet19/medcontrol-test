@@ -36,6 +36,24 @@ export const REPORTS_META: ReportMeta[] = [
       },
     },
   },
+  {
+    id: "combined-dashboard",
+    name: "Сводный дашборд",
+    description:
+      "Три источника в одном отчёте: пользователи из БД, продажи из внешнего API, справочник категорий из моковых данных",
+    formats: ["xlsx"],
+    parametersSchema: {
+      dateFrom: { type: "date", label: "Пользователи: дата начала", required: true },
+      dateTo: { type: "date", label: "Пользователи: дата окончания", required: true },
+      period: {
+        type: "string",
+        label: "Продажи: период",
+        required: true,
+        default: "week",
+        options: ["day", "week", "month"],
+      },
+    },
+  },
 ];
 
 export function registerReportMeta(meta: ReportMeta): void {
