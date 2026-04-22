@@ -51,6 +51,16 @@ export function ParametersForm({
         }
       }
     }
+    // Cross-field: end date must not be earlier than start date
+    if ('dateFrom' in (schema ?? {}) && 'dateTo' in (schema ?? {})) {
+      const from = values['dateFrom'] ?? '';
+      const to = values['dateTo'] ?? '';
+      if (from && to && !errs['dateFrom'] && !errs['dateTo']) {
+        if (Date.parse(to) < Date.parse(from)) {
+          errs['dateTo'] = 'не может быть раньше даты начала';
+        }
+      }
+    }
     return errs;
   }
 
@@ -109,6 +119,16 @@ export function ParametersForm({
               id={key}
               type={inputTypeFor(field)}
               value={values[key] ?? ''}
+              min={
+                key === 'dateTo' && field.type === 'date' && 'dateFrom' in (schema ?? {})
+                  ? (values['dateFrom'] ?? undefined)
+                  : undefined
+              }
+              max={
+                key === 'dateFrom' && field.type === 'date' && 'dateTo' in (schema ?? {})
+                  ? (values['dateTo'] ?? undefined)
+                  : undefined
+              }
               onChange={(e) =>
                 setValues((prev) => ({ ...prev, [key]: e.target.value }))
               }

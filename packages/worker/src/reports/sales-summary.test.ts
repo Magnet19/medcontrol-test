@@ -24,7 +24,7 @@ describe('sales-summary report', () => {
   it('registers its meta with a period parameter', () => {
     const m = REPORTS_META.find((r) => r.id === 'sales-summary');
     expect(m).toBeDefined();
-    expect(m!.formats).toEqual(['pdf']);
+    expect(m!.formats).toEqual(['xlsx', 'pdf']);
     expect(m!.parametersSchema?.period.default).toBe('week');
   });
 });

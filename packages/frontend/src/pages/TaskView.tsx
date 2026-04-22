@@ -1,7 +1,7 @@
 import { useParams } from 'react-router-dom';
 import { useTaskPolling } from '@/hooks/useTaskPolling';
 import { taskDownloadUrl } from '@/lib/api';
-import { Card, Button } from '@/components/ui';
+import { Card, Button, Loader } from '@/components/ui';
 import { Breadcrumbs } from '@/components/Breadcrumbs';
 import { TASK_STATUS_LABEL, TASK_STATUS_COLOR } from '@/lib/taskStatus';
 
@@ -10,7 +10,7 @@ export function TaskView() {
   const { task, error } = useTaskPolling(taskId);
 
   if (error) return <div className="p-6 text-red-600">Ошибка: {error.message}</div>;
-  if (!task) return <div className="p-6 text-slate-500">Загрузка…</div>;
+  if (!task) return <div className="p-6 flex items-center justify-center"><Loader /></div>;
 
   const isCompleted = task.status === 'completed';
 

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { listTasks, taskDownloadUrl } from '@/lib/api';
 import { TASK_STATUS_LABEL, TASK_STATUS_COLOR } from '@/lib/taskStatus';
+import { Loader } from '@/components/ui';
 
 export function TasksList() {
   const { data, error, isLoading } = useQuery({
@@ -10,7 +11,7 @@ export function TasksList() {
     refetchInterval: 3000,
   });
 
-  if (isLoading) return <div className="p-6 text-slate-500">Загрузка…</div>;
+  if (isLoading) return <div className="p-6 flex items-center justify-center"><Loader /></div>;
   if (error) return <div className="p-6 text-red-600">Ошибка: {(error as Error).message}</div>;
 
   const tasks = data?.items ?? [];

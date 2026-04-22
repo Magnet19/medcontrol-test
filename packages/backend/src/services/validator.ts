@@ -53,5 +53,17 @@ export function validateParameters(
       result[key] = field.default;
     }
   }
+  // Cross-field: dateTo must not be earlier than dateFrom
+  if ('dateFrom' in schema && 'dateTo' in schema) {
+    const from = result['dateFrom'];
+    const to = result['dateTo'];
+    if (typeof from === 'string' && typeof to === 'string') {
+      if (Date.parse(to) < Date.parse(from)) {
+        throw new ValidationError([
+          { path: 'dateTo', message: 'dateTo must not be earlier than dateFrom' },
+        ]);
+      }
+    }
+  }
   return result;
 }

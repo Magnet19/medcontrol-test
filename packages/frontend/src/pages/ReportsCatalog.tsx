@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { listReports } from '@/lib/api';
-import { Card, Button } from '@/components/ui';
+import { Card, Button, Loader } from '@/components/ui';
 
 export function ReportsCatalog() {
   const { data, isLoading, error } = useQuery({
@@ -9,7 +9,7 @@ export function ReportsCatalog() {
     queryFn: listReports,
   });
 
-  if (isLoading) return <div className="p-6 text-slate-500">Загрузка…</div>;
+  if (isLoading) return <div className="p-6 flex items-center justify-center"><Loader /></div>;
   if (error) return <div className="p-6 text-red-600">Ошибка: {String(error)}</div>;
 
   const reports = data ?? [];

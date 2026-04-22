@@ -32,7 +32,7 @@ describe('user-export report', () => {
   it('registers its meta in REPORTS_META with the correct schema', () => {
     const m = REPORTS_META.find((r) => r.id === 'user-export');
     expect(m).toBeDefined();
-    expect(m!.formats).toEqual(['xlsx']);
+    expect(m!.formats).toEqual(['xlsx', 'pdf']);
     expect(m!.parametersSchema?.dateFrom.required).toBe(true);
   });
 });

@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { listReports, runReport } from '@/lib/api';
 import { ParametersForm } from '@/components/ParametersForm';
-import { Card } from '@/components/ui';
+import { Card, Loader } from '@/components/ui';
 import { Breadcrumbs } from '@/components/Breadcrumbs';
 
 export function RunReport() {
@@ -12,7 +12,7 @@ export function RunReport() {
   const { data, isLoading } = useQuery({ queryKey: ['reports'], queryFn: listReports });
   const report = useMemo(() => data?.find((r) => r.id === id), [data, id]);
 
-  if (isLoading) return <div className="p-6 text-slate-500">Загрузка…</div>;
+  if (isLoading) return <div className="p-6 flex items-center justify-center"><Loader /></div>;
   if (!report) return <div className="p-6 text-slate-500">Отчёт не найден</div>;
 
   return (

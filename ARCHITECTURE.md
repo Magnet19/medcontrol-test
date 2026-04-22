@@ -566,9 +566,29 @@ export function getAllReports(): ReportDefinition[] {
 
 ### 5.6 Тестирование
 
-**Что сделали:** Ручное тестирование через UI.
+**Что сделали:** Реализовали три уровня тестирования — unit, integration и E2E.
 
-**Как бы сделали в продакшене:**
-- Unit-тесты на каждый отчёт (моканье источников данных, проверка структуры файла)
-- Integration-тесты: `POST /reports/:id/run` → дождаться `completed` → проверить содержимое файла
-- E2E-тесты через Playwright
+**Unit-тесты (Vitest)** — `packages/*/src/**/*.test.ts`:
+
+| Файл | Что проверяет |
+|---|---|
+| `worker/src/reports/user-export.test.ts` | Генерирует Excel, проверяет заголовки (id / email / createdAt) и строки |
+| `worker/src/reports/sales-summary.test.ts` | Генерирует PDF, проверяет сигнатуру `%PDF-` |
+| `worker/src/processor.test.ts` | Переходы статусов pending → processing → completed / failed, запись `resultUrl` |
+| `worker/src/registry.test.ts` | Авто-обнаружение модулей, детекция дублей и невалидных форматов |
+| `shared/src/types.test.ts` | TypeScript-контракты: TaskStatus, ReportDefinition, ParameterField |
+| `backend/src/app.test.ts` | `/health` эндпоинт, 404-обработчик, валидация env-переменных |
+| `backend/src/routes/reports.test.ts` | `GET /api/reports`, `POST /api/reports/:id/run` (валидация, ошибки) |
+| `backend/src/routes/tasks.test.ts` | Пагинация, получение задачи, стриминг XLSX/PDF при скачивании |
+| `backend/src/services/queue.test.ts` | Постановка задачи в очередь, идемпотентность, ошибки Redis |
+| `frontend/src/pages/ReportsCatalog.test.tsx` | Рендеринг карточек, пустое состояние, навигация |
+| `frontend/src/hooks/useTaskPolling.test.tsx` | Цикл поллинга pending → completed |
+| `frontend/src/components/ParametersForm.test.tsx` | Рендер полей, валидация required, сабмит |
+
+**E2E-тесты (Playwright)** — `e2e/platform.spec.ts`:
+
+Полный сценарий: каталог → выбор отчёта → заполнение параметров → запуск → поллинг статуса → скачивание XLSX. Global setup поднимает Docker-стек, global teardown сносит его. Запуск: `make e2e`.
+
+**Что не покрыто:**
+- `repositories/` и `sources/` (DatabaseSource, ApiSource, MockSource) — нет юнит-тестов на уровне адаптеров
+- Backend middleware / error handler pipeline

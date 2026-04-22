@@ -41,7 +41,15 @@ export async function loadReports(reportsDir: string): Promise<void> {
   for (const file of files) {
     const absolute = path.join(reportsDir, file);
     const mod = await import(pathToFileURL(absolute).href);
-    const candidate = mod.default ?? mod.report;
+    // When TypeScript compiles to CJS (no "type":"module" in package.json),
+    // dynamic import() wraps module.exports as { default: module.exports }.
+    // esModuleInterop then puts the real export under .default.default.
+    // Handle both ESM (mod.default = value) and CJS (mod.default = { __esModule, default: value }).
+    const rawDefault = mod.default;
+    const candidate =
+      rawDefault != null && typeof rawDefault === 'object' && '__esModule' in rawDefault
+        ? rawDefault.default ?? rawDefault
+        : rawDefault ?? mod.report;
     const parsed = reportDefinitionSchema.safeParse(candidate);
     if (!parsed.success) {
       throw new Error(
