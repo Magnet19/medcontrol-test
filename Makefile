@@ -43,10 +43,10 @@ build:
 	npm run build
 
 migrate:
-	npm -w @report-platform/shared run prisma:migrate
+	set -a && . ./.env && npm -w @report-platform/shared run prisma:migrate
 
 seed:
-	npm -w @report-platform/shared run prisma:seed
+	set -a && . ./.env && npm -w @report-platform/shared run prisma:seed
 
 clean:
 	rm -rf node_modules packages/*/node_modules packages/*/dist
